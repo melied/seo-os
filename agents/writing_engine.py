@@ -191,8 +191,8 @@ def generate_content_with_ai(keyword, outline, knowledge):
 {knowledge['brand']}"""
 
     sections_text = '\n'.join([
-        f"- {s['heading']}" for s in outline
-        if s['type'] in ['intro', 'h2', 'conclusion']
+        f"- {s.get('h2') or s.get('heading') or s['type']}" for s in outline
+        if s['type'] in ['introduction', 'intro', 'h2', 'conclusion']
     ])
 
     prompt = f"""اكتب مقالاً كاملاً باللغة العربية الفصحى المبسطة عن: {keyword}
