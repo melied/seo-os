@@ -13,3 +13,6 @@ DB_PATH                  = os.path.join("data", "seo_os.db")
 OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL    = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
+
+BLOGGER_OAUTH_CLIENT = os.getenv("BLOGGER_OAUTH_CLIENT", "config/oauth_client.json")
+BLOGGER_TOKEN        = os.getenv("BLOGGER_TOKEN", "config/blogger_token.json")
