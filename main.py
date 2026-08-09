@@ -19,15 +19,18 @@ def print_menu():
     print("  [6]  Generate Outline")
     print("  [7]  Generate Full Article")
     print("  [8]  Run Full SEO Pipeline")
+    print("\nREVIEW & PUBLISH\n")
+    print("  [9]  Human Approval")
+    print("  [10] Blogger Draft")
     print("\nMONITORING\n")
-    print("  [9]  GSC Performance")
-    print("  [10] Find Declining Pages")
-    print("  [11] Find Rising Pages")
-    print("  [12] Internal Linking Opportunities")
+    print("  [11] GSC Performance")
+    print("  [12] Find Declining Pages")
+    print("  [13] Find Rising Pages")
+    print("  [14] Internal Linking Opportunities")
     print("\nSYSTEM\n")
-    print("  [13] System Status")
-    print("  [14] AI Provider Status")
-    print("  [15] Database Status")
+    print("  [15] System Status")
+    print("  [16] AI Provider Status")
+    print("  [17] Database Status")
     print("\n  [0]  Exit")
     print()
 
@@ -94,8 +97,9 @@ def cmd_pipeline():
     from agents.pipeline import run_pipeline
     result = run_pipeline(keyword)
 
-    # تقرير نهائي واضح
+    from agents.intent_agent import TaskStatus
     status = result.get('status', 'UNKNOWN')
+
     print("\n" + "=" * 60)
     print("  SEO PIPELINE — FINAL STATUS")
     print("=" * 60)
@@ -103,12 +107,12 @@ def cmd_pipeline():
 
     stages = result.get('stages_completed', [])
     stage_labels = {
-        'intent':                ('✓', 'Intent Analysis'),
-        'brief':                 ('✓', 'Content Brief'),
-        'outline':               ('✓', 'Outline'),
-        'article_ai':            ('✓', 'Full Article (AI)'),
-        'seo':                   ('✓', 'SEO Optimization'),
-        'quality_gate':          ('✓', 'Quality Gate'),
+        'intent':                  ('✓', 'Intent Analysis'),
+        'brief':                   ('✓', 'Content Brief'),
+        'outline':                 ('✓', 'Outline'),
+        'article_ai':              ('✓', 'Full Article (AI)'),
+        'seo':                     ('✓', 'SEO Optimization'),
+        'quality_gate':            ('✓', 'Quality Gate'),
         'brief_and_outline_saved': ('⚠', 'Brief + Outline saved (no AI)')
     }
 
@@ -116,11 +120,10 @@ def cmd_pipeline():
         if key in stages:
             print(f"  {icon} {label}")
 
-    from agents.intent_agent import TaskStatus
     if status == TaskStatus.AI_UNAVAILABLE:
+        files = result.get('files', {})
         print(f"\n  ⚠  AI unavailable")
         print(f"  ✓  Quality Gate correctly blocked incomplete article")
-        files = result.get('files', {})
         if files:
             print(f"  ✓  Filesystem output created ({len(files)} files)")
         print(f"\n  STATUS: AI_UNAVAILABLE\n")
@@ -131,14 +134,14 @@ def cmd_pipeline():
 
     elif status == TaskStatus.READY_FOR_REVIEW:
         qr = result.get('quality_report', {})
-        print(f"\n  ✓  Quality Gate: PASSED ({qr.get('score', 0)}/100)")
         files = result.get('files', {})
+        print(f"\n  ✓  Quality Gate: PASSED ({qr.get('score', 0)}/100)")
         if files:
             print(f"  ✓  Filesystem output created ({len(files)} files)")
         print(f"\n  STATUS: READY_FOR_REVIEW\n")
         print(f"  The article is ready for human review.")
         print(f"  It has NOT been published yet.")
-        print(f"\n  Next step: Human Approval → Blogger Draft")
+        print(f"\n  Next step: [9] Human Approval → [10] Blogger Draft")
 
     elif status == TaskStatus.FAILED:
         errors = result.get('errors', [])
@@ -147,6 +150,18 @@ def cmd_pipeline():
             print(f"  ❌ {err}")
 
     print("=" * 60)
+
+# ======================================================
+# REVIEW & PUBLISH
+# ======================================================
+
+def cmd_human_approval():
+    from agents.human_approval import run as approval_run
+    approval_run()
+
+def cmd_blogger_draft():
+    from agents.blogger_draft import run as draft_run
+    draft_run()
 
 # ======================================================
 # MONITORING
@@ -227,7 +242,6 @@ def cmd_system_status():
     from config.settings import DB_PATH
     print("\n⚙️  System Status:\n")
 
-    # DB
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -245,12 +259,10 @@ def cmd_system_status():
     except Exception as e:
         print(f"  ❌ Database: {e}")
 
-    # Knowledge
     files = ['knowledge/style_guide.md', 'knowledge/seo_rules.md', 'knowledge/brand_voice.md']
     all_ok = all(os.path.exists(f) for f in files)
     print(f"  {'✅' if all_ok else '❌'} Knowledge Base: {'OK' if all_ok else 'Missing files'}")
 
-    # Outputs
     outputs = len([f for f in os.listdir('outputs') if os.path.isfile(os.path.join('outputs', f))])
     output_dirs = len([f for f in os.listdir('outputs') if os.path.isdir(os.path.join('outputs', f))])
     print(f"  ✅ Outputs: {outputs} files, {output_dirs} pipeline folders")
@@ -263,12 +275,12 @@ def cmd_ai_status():
             print(f"  ✅ OpenRouter: configured")
             print(f"     Model: {OPENROUTER_MODEL}")
         else:
-            print(f"  ❌ OpenRouter: not configured (add OPENROUTER_API_KEY to .env)")
+            print(f"  ❌ OpenRouter: not configured")
 
         if ANTHROPIC_API_KEY and not ANTHROPIC_API_KEY.startswith("sk-ant-xxx"):
             print(f"  ✅ Anthropic: configured")
         else:
-            print(f"  ❌ Anthropic: not configured (add ANTHROPIC_API_KEY to .env)")
+            print(f"  ❌ Anthropic: not configured")
 
         from agents.pipeline import get_ai_provider
         active = get_ai_provider()
@@ -305,19 +317,20 @@ COMMANDS = {
     '6':  cmd_outline,
     '7':  cmd_full_article,
     '8':  cmd_pipeline,
-    '9':  cmd_gsc_performance,
-    '10': cmd_declining_pages,
-    '11': cmd_rising_pages,
-    '12': cmd_internal_linking,
-    '13': cmd_system_status,
-    '14': cmd_ai_status,
-    '15': cmd_db_status,
+    '9':  cmd_human_approval,
+    '10': cmd_blogger_draft,
+    '11': cmd_gsc_performance,
+    '12': cmd_declining_pages,
+    '13': cmd_rising_pages,
+    '14': cmd_internal_linking,
+    '15': cmd_system_status,
+    '16': cmd_ai_status,
+    '17': cmd_db_status,
 }
 
 def main():
     print_header()
 
-    # CLI mode
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
         if cmd in COMMANDS:
@@ -326,7 +339,6 @@ def main():
             print(f"  ❌ Unknown command: {cmd}")
         return
 
-    # Interactive mode
     while True:
         print_menu()
         choice = input("  > ").strip()
