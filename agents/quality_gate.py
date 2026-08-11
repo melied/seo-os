@@ -13,10 +13,6 @@ from agents.validators import (
     print_validation_report
 )
 
-# ======================================================
-# Quality Gate Rules
-# ======================================================
-
 CRITICAL_CHECKS = [
     "full_article",
     "has_introduction",
@@ -42,20 +38,7 @@ def run_quality_gate(
     meta_description: str = "",
     slug: str = ""
 ) -> dict:
-    """
-    Quality Gate مركزي — يحدد إن كان المقال جاهزاً للمراجعة البشرية
 
-    Returns:
-        dict with:
-            - status: READY_FOR_REVIEW | FAILED | AI_UNAVAILABLE
-            - passed: bool
-            - critical_issues: list
-            - warnings: list
-            - checks: dict (نتائج كل فحص)
-            - score: int (0-100)
-    """
-
-    # --- فحص وجود محتوى ---
     if not article_text or article_text.strip() == "":
         return {
             "status": TaskStatus.AI_UNAVAILABLE,
@@ -67,7 +50,6 @@ def run_quality_gate(
             "quality_gate": "FAILED"
         }
 
-    # --- تشغيل الـ Validators ---
     validation = run_all_validations(article_text, keyword, schema)
     article_v = validation['article']
     schema_v = validation['schema']
@@ -76,27 +58,21 @@ def run_quality_gate(
     warnings = list(article_v.get('warnings', []))
     checks = {}
 
-    # === Critical Checks ===
-
-    # 1. مقال كامل
     from agents.validators import is_full_article
     checks['full_article'] = is_full_article(article_text, min_words=200)
     if not checks['full_article']:
         critical_issues.append("❌ النص ليس مقالاً كاملاً — أقل من 200 كلمة")
 
-    # 2. مقدمة موجودة
     from agents.validators import has_introduction
     checks['has_introduction'] = has_introduction(article_text)
     if not checks['has_introduction']:
         critical_issues.append("❌ المقدمة مفقودة")
 
-    # 3. لا Placeholders
     checks['no_placeholders'] = article_v['placeholder_check']['passed']
     if not checks['no_placeholders']:
         for issue in article_v['placeholder_check']['issues']:
             critical_issues.append(f"❌ {issue}")
 
-    # 4. H1 واحد فقط
     h1_count = article_v['headings']['h1']
     checks['valid_h1_count'] = h1_count == 1
     if h1_count == 0:
@@ -104,65 +80,50 @@ def run_quality_gate(
     elif h1_count > 1:
         critical_issues.append(f"❌ يوجد {h1_count} عناوين H1 — يجب أن يكون واحداً")
 
-    # 5. H2 كافية
     h2_count = article_v['headings']['h2']
     checks['min_h2_count'] = h2_count >= 2
     if not checks['min_h2_count']:
         critical_issues.append("❌ عدد الأقسام الرئيسية أقل من 2")
 
-    # 6. لا عناوين مكررة
     from agents.validators import find_duplicate_headings
     duplicates = find_duplicate_headings(article_text)
     checks['no_duplicate_headings'] = len(duplicates) == 0
     if duplicates:
         critical_issues.append(f"❌ عناوين مكررة: {', '.join(duplicates)}")
 
-    # 7. Schema صالح
     checks['valid_schema'] = schema_v['passed'] if schema else True
     if schema and not schema_v['passed']:
         for issue in schema_v['issues']:
             critical_issues.append(issue)
 
-    # === SEO Checks ===
-
-    # Meta Title
     checks['has_meta_title'] = bool(meta_title and len(meta_title) >= 10)
     if not checks['has_meta_title']:
         critical_issues.append("❌ Meta Title مفقود أو قصير جداً")
 
-    # Meta Description
     checks['has_meta_description'] = bool(meta_description and len(meta_description) >= 50)
     if not checks['has_meta_description']:
         warnings.append("⚠️  Meta Description مفقود أو قصير")
 
-    # Slug
     checks['has_slug'] = bool(slug and len(slug) >= 3)
     if not checks['has_slug']:
         warnings.append("⚠️  Slug مفقود")
 
-    # === Warning Checks ===
-
-    # خاتمة
     from agents.validators import has_conclusion
     checks['has_conclusion'] = has_conclusion(article_text)
     if not checks['has_conclusion']:
         warnings.append("⚠️  الخاتمة غير واضحة")
 
-    # Keyword موجودة
     if keyword:
         checks['keyword_present'] = keyword.lower() in article_text.lower()
         if not checks['keyword_present']:
             warnings.append(f"⚠️  الكلمة المفتاحية '{keyword}' غير موجودة في المقال")
 
-    # === حساب النقاط ===
-    total_critical = len(CRITICAL_CHECKS) + 2  # +2 للـ SEO checks
+    total_critical = len(CRITICAL_CHECKS) + 2
     passed_critical = sum(1 for k in CRITICAL_CHECKS if checks.get(k, False))
     passed_critical += (1 if checks.get('has_meta_title') else 0)
     passed_critical += (1 if checks.get('valid_schema') else 0)
-
     score = int((passed_critical / total_critical) * 100) if total_critical > 0 else 0
 
-    # === تحديد الحالة ===
     if len(critical_issues) == 0:
         status = TaskStatus.READY_FOR_REVIEW
         passed = True
@@ -183,16 +144,20 @@ def run_quality_gate(
     }
 
 def save_quality_report(task_id: int, report: dict):
-    """حفظ تقرير الـ Quality Gate في قاعدة البيانات"""
+    """حفظ تقرير الـ Quality Gate في قاعدة البيانات — يدعم V1 وV2"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # V1 يستخدم 'status' — V2 يستخدم 'gate_status'
+    status = report.get('gate_status') or report.get('status') or TaskStatus.FAILED
+
     cursor.execute("""
         UPDATE content_tasks
         SET quality_report = ?, status = ?, updated_at = datetime('now')
         WHERE id = ?
     """, (
         json.dumps(report, ensure_ascii=False),
-        report['status'],
+        status,
         task_id
     ))
     conn.commit()
@@ -230,13 +195,11 @@ def print_quality_report(report: dict):
             print(f"     {w}")
 
     print(f"\n{'=' * 55}")
-
     if gate == "PASSED":
         print("  ✅ المقال جاهز للمراجعة البشرية")
         print("  ⏳ في انتظار الموافقة قبل النشر")
     else:
         print("  ❌ المقال لا يمكن تمريره — يجب إصلاح المشاكل الحرجة")
-
     print(f"{'=' * 55}")
 
 def run(article_text: str = None, keyword: str = "",
@@ -264,7 +227,6 @@ def run(article_text: str = None, keyword: str = "",
 
 
 if __name__ == "__main__":
-    # اختبار بنص كامل
     from tests.test_validators import FULL_ARTICLE
 
     schema = {
