@@ -51,3 +51,8 @@ logs/
 
 .DS_Store
 Thumbs.db
+
+config/blogger_token.json
+config/oauth_client.json
+config/service_account.json
+config/.env
